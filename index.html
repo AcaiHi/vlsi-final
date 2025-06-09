@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+
+    <title></title>
+    <link rel="stylesheet" href="dist/reveal.css" />
+    <link rel="stylesheet" href="dist/theme/consult.css" id="theme" />
+    <link rel="stylesheet" href="plugin/highlight/zenburn.css" />
+	<link rel="stylesheet" href="css/layout.css" />
+	<link rel="stylesheet" href="plugin/customcontrols/style.css">
+
+
+
+    <script defer src="dist/fontawesome/all.min.js"></script>
+
+	<script type="text/javascript">
+		var forgetPop = true;
+		function onPopState(event) {
+			if(forgetPop){
+				forgetPop = false;
+			} else {
+				parent.postMessage(event.target.location.href, "app://obsidian.md");
+			}
+        }
+		window.onpopstate = onPopState;
+		window.onmessage = event => {
+			if(event.data == "reload"){
+				window.document.location.reload();
+			}
+			forgetPop = true;
+		}
+
+		function fitElements(){
+			const itemsToFit = document.getElementsByClassName('fitText');
+			for (const item in itemsToFit) {
+				if (Object.hasOwnProperty.call(itemsToFit, item)) {
+					var element = itemsToFit[item];
+					fitElement(element,1, 1000);
+					element.classList.remove('fitText');
+				}
+			}
+		}
+
+		function fitElement(element, start, end){
+
+			let size = (end + start) / 2;
+			element.style.fontSize = `${size}px`;
+
+			if(Math.abs(start - end) < 1){
+				while(element.scrollHeight > element.offsetHeight){
+					size--;
+					element.style.fontSize = `${size}px`;
+				}
+				return;
+			}
+
+			if(element.scrollHeight > element.offsetHeight){
+				fitElement(element, start, size);
+			} else {
+				fitElement(element, size, end);
+			}		
+		}
+
+
+		document.onreadystatechange = () => {
+			fitElements();
+			if (document.readyState === 'complete') {
+				if (window.location.href.indexOf("?export") != -1){
+					parent.postMessage(event.target.location.href, "app://obsidian.md");
+				}
+				if (window.location.href.indexOf("print-pdf") != -1){
+					let stateCheck = setInterval(() => {
+						clearInterval(stateCheck);
+						window.print();
+					}, 250);
+				}
+			}
+	};
+
+
+        </script>
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides"><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+# Constraint-Based Task Scheduler
+
+## 基於約束條件的任務排程系統設計與實現
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 問題定義 (1/3)
+
+### 平行運算系統中的核心挑戰
+
+隨著多核心處理器和分散式運算系統的快速發展，平行運算已成為提升系統效能的關鍵技術。在現代運算平台中，複雜的應用程式通常由多個相互依賴的計算任務組成，這些任務必須在滿足執行順序約束的前提下，有效地分配到可用的計算資源上執行。
+
+**傳統工作匹配與排程問題**主要處理兩個核心議題：
+
+- **工作排程**：決定各個工作的執行先後順序
+- **工作匹配**：分派工作給適當的處理單元執行
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 問題定義 (2/3)
+
+### 本研究的問題擴展：動態請求環境
+
+**關鍵差異**：傳統排程假設所有任務在開始時已知，而本系統面對的是**動態任務請求環境**。
+
+### 系統輸入定義
+
+**靜態輸入**：
+
+- **任務集合**：T = {t₁, t₂, ..., tₙ}，每個任務具有已知的執行時間
+- **依賴關係矩陣**：D ∈ {0,1}ⁿˣⁿ，定義任務間的前置約束關係
+- **系統資源約束**：處理器數量、記憶體限制等硬體參數
+
+**動態輸入**：
+
+- **任務請求流**：req(tᵢ, timestamp)，任務請求以不可預測的時序到達
+- **系統狀態查詢**：每個時刻系統需回應當前可執行任務的狀態
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 問題定義 (3/3)
+
+### 問題求解的核心機制
+
+**時間離散化處理**：
+
+- **請求處理時刻**：系統接收新的任務請求，更新內部狀態
+- **調度決策時刻**：基於當前依賴滿足情況，決定哪些任務可以開始執行
+- **狀態更新時刻**：追蹤正在執行任務的進度，處理任務完成事件
+
+**調度決策邏輯**： 系統必須在每個決策時刻解決以下問題：
+
+1. **依賴約束檢查**：∀(tᵢ, tⱼ) ∈ D，只有當 tᵢ 完成後 tⱼ 才能執行
+2. **資源可用性評估**：在有限處理資源下選擇執行任務的子集
+3. **優先級決策**：當多個任務同時滿足執行條件時的選擇策略
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 問題分析 (1/2)
+
+### 系統級調度器 FSM
+- SYS_IDLE : 狀態值: 0
+	> ready = 1<br></br>接收新任務請求<br></br>設置all_done狀態 
+- SYS_SCHEDULE : 狀態值: 1
+	> 選擇next_task，設置task_status = TASK_RUNNING，載入task_counter
+- SYS_EXECUTE : 狀態值: 2
+	> task_counter遞減，任務執行中
+- SYS_COMPLETE : 狀態值: 3
+>	task_status = TASK_DONE，task_completed[id] = 1，task_done = 1
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+<img src="Pasted image 20250609100502.png" alt="" style="object-fit: scale-down">
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 問題分析 (2/2)
+
+### 任務級狀態管理 FSM
+- TASK_NONE : 狀態值: 0
+    > DEFAULT_STATUS = TASK_NONE<br></br>未請求狀態
+- TASK_WAITING : 狀態值: 1
+    > 等待依賴任務完成<br></br>deps_satisfied檢查<br></br>可能長期停留此狀態
+- TASK_RUNNING : 狀態值: 2
+    > 執行中狀態<br></br>由系統狀態機控制時間<br></br>current_task指向此任務
+- TASK_DONE : 狀態值: 3
+	>	完成狀態<br></br>task_completed位元設置為1<br></br>解除其他任務依賴
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+<img src="Pasted image 20250609100525.png" alt="" style="object-fit: scale-down">
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 多任務系統的實際執行分析 (1/2)
+
+### 任務依賴圖（DAG）
+
+
+<div class="mermaid">
+graph TD
+    A[A: 無依賴<br></br>執行時間: 2週期] 
+    B[B: 無依賴<br></br>執行時間: 3週期]
+    A --> C[C: 依賴A<br></br>執行時間: 4週期]
+    B --> D[D: 依賴B,C<br></br>執行時間: 2週期]
+    C --> D
+    C --> E[E: 依賴C<br></br>執行時間: 3週期]
+    
+    style A fill:#e1f5fe
+    style B fill:#e1f5fe
+    style C fill:#fff3e0
+    style D fill:#ffebee
+    style E fill:#f3e5f5
+
+</div>
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 多任務系統的實際執行分析 (2/2)
+
+### 動態執行時序追蹤
+
+**任務請求序列**：req(C) → req(D) → req(A) → req(B) → req(E)
+
+| 時刻  | 事件             | A狀態     | B狀態     | C狀態     | D狀態     | E狀態  | 系統狀態         | current_task | 說明                         |
+| --- | -------------- | ------- | ------- | ------- | ------- | ---- | ------------ | ------------ | -------------------------- |
+| T0  | 系統啟動           | NONE    | NONE    | NONE    | NONE    | NONE | SYS_IDLE     | -            | 初始狀態，所有任務未請求               |
+| T1  | req(C)         | NONE    | NONE    | WAITING | NONE    | NONE | SYS_IDLE     | -            | C請求但依賴A未滿足，無可執行任務          |
+| T2  | req(D)         | NONE    | NONE    | WAITING | WAITING | NONE | SYS_IDLE     | -            | D請求但依賴B,C未滿足               |
+| T3  | req(A)         | WAITING | NONE    | WAITING | WAITING | NONE | SYS_SCHEDULE | -            | A無依賴，has_executable_task=1 |
+| T4  | A開始執行          | RUNNING | NONE    | WAITING | WAITING | NONE | SYS_EXECUTE  | A            | A執行中（task_counter=2）       |
+| T5  | A執行中           | RUNNING | NONE    | WAITING | WAITING | NONE | SYS_EXECUTE  | A            | A執行中（task_counter=1）       |
+| T6  | A完成            | DONE    | NONE    | WAITING | WAITING | NONE | SYS_COMPLETE | A            | A完成，deps_satisfied_C觸發     |
+| T7  | req(B) + C準備執行 | DONE    | WAITING | RUNNING | WAITING | NONE | SYS_EXECUTE  | C            | C依賴A已滿足，開始執行               |
+| T8  | C執行中           | DONE    | WAITING | RUNNING | WAITING | NONE | SYS_EXECUTE  | C            | C執行中（task_counter=3）       |
+| T9  | C執行中           | DONE    | WAITING | RUNNING | WAITING | NONE | SYS_EXECUTE  | C            | C執行中（task_counter=2）       |
+| T10 | C執行中           | DONE    | WAITING | RUNNING | WAITING | NONE | SYS_EXECUTE  | C            | C執行中（task_counter=1）       |
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+| 時刻  | 事件             | A狀態     | B狀態     | C狀態     | D狀態     | E狀態  | 系統狀態         | current_task | 說明                         |
+| --- | -------------- | ------- | ------- | ------- | ------- | ---- | ------------ | ------------ | -------------------------- |
+| T11 | C完成 + B準備執行  | DONE | RUNNING | DONE | WAITING | NONE    | SYS_EXECUTE  | B   | C完成，B開始執行            |
+| T12 | B執行中         | DONE | RUNNING | DONE | WAITING | NONE    | SYS_EXECUTE  | B   | B執行中（task_counter=2） |
+| T13 | B執行中         | DONE | RUNNING | DONE | WAITING | NONE    | SYS_EXECUTE  | B   | B執行中（task_counter=1） |
+| T14 | B完成 + D準備執行  | DONE | DONE    | DONE | RUNNING | NONE    | SYS_EXECUTE  | D   | B完成，D依賴B,C已滿足        |
+| T15 | D執行中         | DONE | DONE    | DONE | RUNNING | NONE    | SYS_EXECUTE  | D   | D執行中（task_counter=1） |
+| T16 | D完成 + req(E) | DONE | DONE    | DONE | DONE    | WAITING | SYS_COMPLETE | D   | D完成，E請求              |
+| T17 | E準備執行        | DONE | DONE    | DONE | DONE    | RUNNING | SYS_EXECUTE  | E   | E依賴C已滿足，立即執行         |
+| T18 | E執行中         | DONE | DONE    | DONE | DONE    | RUNNING | SYS_EXECUTE  | E   | E執行中（task_counter=2） |
+| T19 | E執行中         | DONE | DONE    | DONE | DONE    | RUNNING | SYS_EXECUTE  | E   | E執行中（task_counter=1） |
+| T20 | E完成          | DONE | DONE    | DONE | DONE    | DONE    | SYS_IDLE     | -   | E完成                  |
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 第一版實現 (1/6)
+
+### 系統架構概覽
+
+
+<div class="mermaid">
+graph TB
+    subgraph "task_dependency_processor.v"
+        A[任務請求輸入] --> B[狀態機控制器]
+        B --> C[任務狀態管理]
+        C --> D[執行時間計數器]
+        B --> E[依賴檢查器呼叫]
+    end
+    
+    subgraph "dependency_checker.v"
+        E --> F[硬編碼依賴邏輯]
+        F --> G[ready信號輸出]
+    end
+    
+    subgraph "task_definitions.v"
+        H[任務常數定義]
+        I[狀態常數定義]
+    end
+    
+    G --> B
+    H --> F
+    I --> C
+
+</div>
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 第一版實現 (2/6)
+
+### 核心狀態機實現
+
+```verilog
+// 系統狀態機
+localparam IDLE = 2'b00;      // 等待任務請求
+localparam SCHEDULE = 2'b01;  // 排程決策
+localparam EXECUTE = 2'b10;   // 任務執行
+localparam COMPLETE = 2'b11;  // 任務完成
+
+// 任務狀態定義
+`define TASK_NONE    2'b00     // 未請求
+`define TASK_WAITING 2'b01     // 等待依賴
+`define TASK_RUNNING 2'b10     // 執行中
+`define TASK_DONE    2'b11     // 已完成
+```
+
+這段程式碼定義了調度器的4個主要狀態和每個任務的4種生命週期狀態，使用2位元編碼節省硬體資源。
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 第一版實現 (3/6)
+
+### 狀態轉換邏輯的 Verilog 實現
+
+```verilog
+always @(*) begin
+    next_state = state;
+    
+    case (state)
+        IDLE: begin
+            if (task_req) 
+                next_state = SCHEDULE;
+        end
+        
+        SCHEDULE: begin
+            if (has_executable_task) begin
+                next_state = EXECUTE;
+            end else begin
+                next_state = IDLE;  // 關鍵回朔邏輯
+            end
+        end
+        
+        EXECUTE: begin
+            if (task_counter == 4'd1) 
+                next_state = COMPLETE;
+        end
+        
+        COMPLETE: begin
+            if (|task_requested)
+                next_state = SCHEDULE;  // 批次處理循環
+            else
+                next_state = IDLE;
+        end
+    endcase
+end
+```
+
+這個組合邏輯區塊實現了前面FSM圖中的所有狀態轉換，包含關鍵的回朔機制和批次處理邏輯。
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 第一版實現 (4/6)
+
+### 依賴檢查器的具體實現
+
+```verilog
+module dependency_checker (
+    input wire [6:0] task_completed,
+    input wire [2:0] task_id,
+    output wire is_ready
+);
+    reg ready;
+    
+    always @(*) begin
+        case (task_id)
+            `TASK_A: ready = 1'b1;                           // A無前置任務
+            `TASK_B: ready = task_completed[`TASK_A];        // B依賴A
+            `TASK_C: ready = task_completed[`TASK_A];        // C依賴A
+            `TASK_D: ready = task_completed[`TASK_B] && 
+                            task_completed[`TASK_C];         // D依賴B和C
+            `TASK_E: ready = task_completed[`TASK_C];        // E依賴C
+            `TASK_F: ready = task_completed[`TASK_D];        // F依賴D
+            `TASK_G: ready = task_completed[`TASK_E] && 
+                            task_completed[`TASK_F];         // G依賴E和F
+            default: ready = 1'b0;
+        endcase
+    end
+    
+    assign is_ready = ready;
+endmodule
+```
+
+這個模組使用 case 語句將每個任務的依賴關係直接編碼在程式中，透過位向量檢查依賴是否滿足。
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 第一版實現 (5/6)
+
+### 任務狀態管理的實現細節
+
+```verilog
+reg [1:0] task_status [0:6];   // 7個任務的狀態陣列
+reg [6:0] task_completed;      // 完成狀態位向量
+reg [6:0] task_requested;      // 請求狀態位向量
+reg [6:0] tasks_ever_requested; // 曾請求過的任務追蹤
+```
+
+### 狀態更新邏輯
+
+```verilog
+always @(posedge clk or negedge rst_n) begin
+    case (state)
+        IDLE: begin
+            if (task_req) begin
+                task_requested[task_id] <= 1'b1;
+                tasks_ever_requested[task_id] <= 1'b1;
+                task_status[task_id] <= `TASK_WAITING;
+            end
+        end
+        
+        SCHEDULE: begin
+            if (has_executable_task) begin
+                current_task <= next_task;
+                task_status[next_task] <= `TASK_RUNNING;
+                task_counter <= task_time_lookup[next_task];
+            end
+        end
+        
+        COMPLETE: begin
+            task_completed[current_task] <= 1'b1;
+            task_status[current_task] <= `TASK_DONE;
+            task_requested[current_task] <= 1'b0;
+        end
+    endcase
+end
+```
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 第一版實現 (6/6)
+
+### 任務選擇的優先級編碼器
+
+```verilog
+assign task_ready_to_execute[0] = task_requested[0] && 
+                                  (task_status[0] == `TASK_WAITING) && 1'b1;
+assign task_ready_to_execute[1] = task_requested[1] && 
+                                  (task_status[1] == `TASK_WAITING) && 
+                                  task_completed[0];
+// ... 其他任務的檢測邏輯
+```
+
+### 優先級編碼器實現
+
+```verilog
+always @(*) begin
+    // 優先掩碼：低編號任務優先
+    masked_ready[0] = task_ready_to_execute[0];
+    masked_ready[1] = task_ready_to_execute[1] & ~task_ready_to_execute[0];
+    masked_ready[2] = task_ready_to_execute[2] & ~task_ready_to_execute[1] 
+                     & ~task_ready_to_execute[0];
+    // ...
+    
+    // 編碼邏輯：將7位元向量編碼為3位元任務ID
+    encoded_task[0] = masked_ready[1] | masked_ready[3] | masked_ready[5];
+    encoded_task[1] = masked_ready[2] | masked_ready[3] | masked_ready[6];
+    encoded_task[2] = masked_ready[4] | masked_ready[5] | masked_ready[6];
+    
+    next_task = (|masked_ready) ? encoded_task : 3'd0;
+end
+```
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 第一版實現的系統特性
+
+### 技術優勢
+
+✅ **確定性響應**：組合邏輯的零延遲依賴檢查  
+✅ **高效執行**：優先級編碼器的快速任務選擇  
+✅ **狀態一致性**：同步時脈的原子狀態更新  
+✅ **資源效率**：緊湊的狀態編碼和位向量操作
+
+### 設計限制
+
+❌ **任務數量固定**：硬編碼7個任務  
+❌ **依賴關係固定**：無法動態調整依賴關係  
+❌ **執行時間固定**：任務時間編譯時確定
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 第二版實現 (1/6)
+
+### 設計動機：解決第一版的核心限制
+
+第一版的硬編碼依賴關係限制了系統的通用性：
+
+```verilog
+// 第一版：依賴關係固化在程式中
+case (task_id)
+    `TASK_A: ready = 1'b1;
+    `TASK_B: ready = task_completed[`TASK_A];        
+    `TASK_C: ready = task_completed[`TASK_A];        
+    // 無法動態調整...
+endcase
+```
+
+**第二版的核心改進**：將依賴關係從硬體邏輯中分離，使用**動態依賴矩陣**作為輸入參數。
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 第二版實現 (2/6)
+
+### 49位元依賴矩陣編碼策略
+
+```
+49位元依賴矩陣 = 7個任務 × 7位元依賴向量
+
+矩陣分段編碼：
+[6:0]   → 任務A的依賴向量 (A依賴哪些任務)
+[13:7]  → 任務B的依賴向量 (B依賴哪些任務)
+[20:14] → 任務C的依賴向量 (C依賴哪些任務)
+[27:21] → 任務D的依賴向量 (D依賴哪些任務)
+[34:28] → 任務E的依賴向量 (E依賴哪些任務)
+[41:35] → 任務F的依賴向量 (F依賴哪些任務)
+[48:42] → 任務G的依賴向量 (G依賴哪些任務)
+```
+
+**編碼範例**：如果任務D依賴任務B和C，則 `[27:21] = 7'b0000110`
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 第二版實現 (3/6)
+
+### 動態依賴檢查器的實現
+
+```verilog
+module dependency_checker (
+    input wire [6:0] task_completed,
+    input wire [2:0] task_id,
+    input wire [48:0] dependency_matrix,  // 新增：動態依賴關係矩陣
+    output wire is_ready
+);
+    
+    // 解析依賴關係矩陣
+    wire [6:0] task_deps_0, task_deps_1, task_deps_2, task_deps_3;
+    wire [6:0] task_deps_4, task_deps_5, task_deps_6;
+    
+    assign task_deps_0 = dependency_matrix[6:0];     // 任務A的依賴
+    assign task_deps_1 = dependency_matrix[13:7];    // 任務B的依賴
+    assign task_deps_2 = dependency_matrix[20:14];   // 任務C的依賴
+    assign task_deps_3 = dependency_matrix[27:21];   // 任務D的依賴
+    assign task_deps_4 = dependency_matrix[34:28];   // 任務E的依賴
+    assign task_deps_5 = dependency_matrix[41:35];   // 任務F的依賴
+    assign task_deps_6 = dependency_matrix[48:42];   // 任務G的依賴
+```
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 第二版實現 (4/6)
+
+### 依賴檢查邏輯
+
+```verilog
+    // 選擇當前任務的依賴關係
+    reg [6:0] current_deps;
+    always @(*) begin
+        case (task_id)
+            3'd0: current_deps = task_deps_0;
+            3'd1: current_deps = task_deps_1;
+            3'd2: current_deps = task_deps_2;
+            3'd3: current_deps = task_deps_3;
+            3'd4: current_deps = task_deps_4;
+            3'd5: current_deps = task_deps_5;
+            3'd6: current_deps = task_deps_6;
+            default: current_deps = 7'b0;
+        endcase
+    end
+    
+    // 檢查所有依賴是否滿足
+    wire deps_satisfied;
+    assign deps_satisfied = ((task_completed & current_deps) == current_deps);
+    
+    assign is_ready = deps_satisfied;
+    
+endmodule
+```
+
+這個模組首先將49位元矩陣分解為7個7位元的依賴向量，然後根據任務ID選擇對應的依賴向量進行檢查。核心的依賴檢查使用位向量與運算來判斷所有依賴是否滿足。
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 第二版實現 (5/6)
+
+### 主處理器的矩陣整合
+
+```verilog
+module task_dependency_processor (
+    input wire clk,
+    input wire rst_n,
+    input wire task_req,
+    input wire [2:0] task_id,
+    input wire [48:0] dependency_matrix,  // 新增：動態依賴關係矩陣
+    output reg task_done,
+    output reg [2:0] current_task,
+    output reg all_done,
+    output wire ready
+);
+    
+    // 依賴關係檢查器
+    dependency_checker dep_check (
+        .task_completed(task_completed),
+        .task_id(next_task),
+        .dependency_matrix(dependency_matrix),  // 傳遞動態依賴關係
+        .is_ready(task_is_ready)
+    );
+```
+
+主處理器現在接收依賴矩陣作為輸入參數，並將其傳遞給依賴檢查器，實現完全的動態配置。
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 第二版實現 (6/6)
+
+### 矩陣解析用於任務可執行性檢查
+
+```verilog
+    // 解析依賴關係矩陣用於task_ready_to_execute計算
+    wire [6:0] deps_0, deps_1, deps_2, deps_3, deps_4, deps_5, deps_6;
+    assign deps_0 = dependency_matrix[6:0];
+    assign deps_1 = dependency_matrix[13:7];
+    assign deps_2 = dependency_matrix[20:14];
+    assign deps_3 = dependency_matrix[27:21];
+    assign deps_4 = dependency_matrix[34:28];
+    assign deps_5 = dependency_matrix[41:35];
+    assign deps_6 = dependency_matrix[48:42];
+    
+    // 檢查各任務的依賴是否滿足
+    wire deps_satisfied_0, deps_satisfied_1, deps_satisfied_2, deps_satisfied_3;
+    wire deps_satisfied_4, deps_satisfied_5, deps_satisfied_6;
+    
+    assign deps_satisfied_0 = ((task_completed & deps_0) == deps_0);
+    assign deps_satisfied_1 = ((task_completed & deps_1) == deps_1);
+    assign deps_satisfied_2 = ((task_completed & deps_2) == deps_2);
+    assign deps_satisfied_3 = ((task_completed & deps_3) == deps_3);
+    assign deps_satisfied_4 = ((task_completed & deps_4) == deps_4);
+    assign deps_satisfied_5 = ((task_completed & deps_5) == deps_5);
+    assign deps_satisfied_6 = ((task_completed & deps_6) == deps_6);
+    
+    // 檢查每個任務是否可執行（基於動態依賴關係）
+    wire [6:0] task_ready_to_execute;
+    
+    assign task_ready_to_execute[0] = task_requested[0] && (task_status[0] == `TASK_WAITING) && deps_satisfied_0;
+    assign task_ready_to_execute[1] = task_requested[1] && (task_status[1] == `TASK_WAITING) && deps_satisfied_1;
+    assign task_ready_to_execute[2] = task_requested[2] && (task_status[2] == `TASK_WAITING) && deps_satisfied_2;
+    // ... 其他任務
+```
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 第二版的核心優勢分析
+
+### 技術創新點
+
+**🎯 完全可配置的依賴關係**
+
+- 運行時動態調整任務依賴，無需重新編譯硬體
+- 支援任意DAG結構的工作流
+
+**⚡ 高效的位向量運算**
+
+- `(completed & deps) == deps` 的O(1)依賴檢查
+- 並行處理所有任務的依賴狀態
+
+**🔧 保持硬體性能優勢**
+
+- 純組合邏輯實現，零延遲響應
+- 緊湊的49位元編碼，節省硬體資源
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 與第一版的對比
+
+|特性|第一版|第二版|
+|---|---|---|
+|依賴配置|編譯時固定|運行時動態|
+|適用場景|特定工作流|通用工作流|
+|硬體資源|較少|適中|
+|可維護性|困難|容易|
+|擴展性|無|高|
+
+### 第二版實現的重要意義
+
+✅ **通用性突破**：從特定用途到通用任務調度平台  
+✅ **維護性提升**：依賴關係變更不需修改硬體設計  
+✅ **開發效率**：支援快速原型和測試不同工作流  
+✅ **產品化可行**：單一硬體設計支援多種應用場景
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 應用場景展示
+
+### 動態工作流配置範例
+
+**場景1：軟體編譯流程**
+
+```
+dependency_matrix = 49'b0010000000100000001000000010000000100000001000000;
+// G→A, B→∅, C→A, D→{B,C}, E→C, F→D, G→∅
+```
+
+**場景2：資料處理管線**
+
+```
+dependency_matrix = 49'b0000000000000010000001000000011000000100000001000000;
+// 不同的依賴關係，同一套硬體
+```
+
+只需改變輸入的依賴矩陣，同一套硬體即可適應不同的應用需求。
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 系統驗證 (1/7)
+
+### Pattern 雙模式測試設計
+
+系統提供兩種測試模式，滿足不同的驗證需求：
+
+```verilog
+// 全覆蓋測試參數
+parameter MAX_TEST_CASES = 1000;
+parameter ENABLE_FULL_COVERAGE = 1;  // 設為1啟用全覆蓋測試，0為單一測試
+
+// 測試案例儲存
+reg [48:0] test_dependency_matrix [0:MAX_TEST_CASES-1];
+reg [2:0] test_input_sequence [0:MAX_TEST_CASES-1][0:6];    // 每個測試案例的輸入順序
+reg [2:0] test_golden_order [0:MAX_TEST_CASES-1][0:6];     // 每個測試案例的golden執行順序
+reg [9:0] total_test_cases;  // 實際測試案例數量
+
+// 測試結果統計
+reg [9:0] passed_tests;
+reg [9:0] failed_tests;
+reg test_failed;
+```
+
+**模式選擇機制**：透過 `ENABLE_FULL_COVERAGE` 參數控制測試模式，提供靈活的驗證策略。
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 系統驗證 (2/7)
+
+### 單一測試模式（內建基礎驗證）
+
+```verilog
+else begin
+    // 單一測試模式（原有功能）
+    $display("===== 單一依賴關係測試模式 =====");
+    dependency_matrix = 49'b0000110_0001000_0000100_0000110_0000001_0000001_0000000; // 預設依賴關係
+    
+    generate_random_sequence();
+    
+    rst_n = 1'b0; task_req = 1'b0; task_id = 3'd0;
+    #10; rst_n = 1'b1; #20;
+    
+    for (i = 0; i < 7; i = i + 1) begin
+        $display("\n***** 步驟%0d：請求任務%c *****", i+1, task_sequence[i] + "a");
+        request_task(task_sequence[i]);
+        #30;
+    end
+    
+    wait(all_done);
+    `$display("時間=%0t - 所有任務完成！", $`time);
+end
+```
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 系統驗證 (3/7)
+
+### 隨機序列生成
+
+```verilog
+// 隨機序列生成
+task generate_random_sequence;
+    begin
+        // 初始化任務序列
+        for (i = 0; i < 7; i = i + 1) begin
+            task_sequence[i] = i;
+        end
+        
+        // Fisher-Yates 洗牌算法
+        for (i = 6; i > 0; i = i - 1) begin
+            j = $urandom % (i + 1);
+            temp = task_sequence[i];
+            task_sequence[i] = task_sequence[j];
+            task_sequence[j] = temp;
+        end
+    end
+endtask
+```
+
+單一測試模式使用預設的依賴關係矩陣，生成隨機任務序列進行基本功能驗證，適合開發階段的快速測試。
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 系統驗證 (4/7)
+
+### Python 全覆蓋測試：test_cases.txt 生成
+
+**大規模測試的必要性**：
+
+- **依賴結構單一**：僅使用一種預設依賴關係
+- **邊界情況缺失**：無法測試各種複雜的DAG結構
+- **隨機性有限**：Fisher-Yates雖然隨機，但無法保證困難案例
+
+**Python Golden Test 生成策略**：
+
+1. **系統性依賴矩陣生成**：枚舉各種有效DAG結構，確保無循環依賴
+2. **極端請求序列設計**：包含最佳順序、逆序、分段亂序等壓力測試
+3. **精確Golden Answer計算**：模擬硬體調度器邏輯，計算正確執行順序
+4. **大規模案例輸出**：生成數百至上千個測試案例到 `test_cases.txt`
+
+### test_cases.txt 檔案格式
+
+```
+1000
+0000000000000010000001000000011000001000000010000000001000000000000000 0 1 2 3 4 5 6 0 1 2 3 4 5 6
+1111111011111101111110111111011111101111110111111001111101111110111111 6 5 4 3 2 1 0 0 1 2 3 4 5 6
+0000110000100000010000001100000010000000100000000100000000000000000000 3 1 5 0 6 2 4 0 1 2 3 4 5 6
+...（更多測試案例）
+```
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 系統驗證 (5/7)
+
+### 測試案例載入機制
+
+```verilog
+// 讀取測試案例文件
+task load_test_cases;
+    integer file, status, case_count;
+    reg [7:0] matrix_char;
+    integer bit_pos;
+    reg [6:0] task_deps;
+    begin
+        $display("正在讀取測試案例文件...");
+        
+        file = $fopen("test_cases.txt", "r");
+        if (file == 0) begin
+            $display("錯誤：無法打開 test_cases.txt 文件！");
+            $display("請先運行 Python 腳本生成測試案例。");
+            $finish;
+        end
+        
+        // 讀取案例數量
+        status = $fscanf(file, "%d", total_test_cases);
+        if (total_test_cases > MAX_TEST_CASES) begin
+            $display("警告：測試案例數量 (%0d) 超過最大限制 (%0d)，將只測試前 %0d 個案例",
+                    total_test_cases, MAX_TEST_CASES, MAX_TEST_CASES);
+            total_test_cases = MAX_TEST_CASES;
+        end
+```
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 系統驗證 (6/7)
+
+### 載入機制續：逐字元讀取矩陣
+
+```verilog
+        // 讀取每個測試案例
+        for (case_count = 0; case_count < total_test_cases; case_count = case_count + 1) begin
+            test_dependency_matrix[case_count] = 49'b0;
+            
+            // 讀取49位元依賴關係矩陣（逐字符讀取）
+            bit_pos = 0;
+            while (bit_pos < 49) begin
+                status = $fscanf(file, "%c", matrix_char);
+                if (matrix_char == 8'h31) begin        // '1'
+                    test_dependency_matrix[case_count][bit_pos] = 1'b1;
+                    bit_pos = bit_pos + 1;
+                end else if (matrix_char == 8'h30) begin // '0'
+                    test_dependency_matrix[case_count][bit_pos] = 1'b0;
+                    bit_pos = bit_pos + 1;
+                end
+            end
+            
+            // 跳過空格並讀取輸入序列
+            status = $fscanf(file, "%c", matrix_char);  // 跳過空格
+            for (j = 0; j < 7; j = j + 1) begin
+                status = $fscanf(file, "%d", test_input_sequence[case_count][j]);
+            end
+            
+            // 讀取期望執行順序
+            for (j = 0; j < 7; j = j + 1) begin
+                status = $fscanf(file, "%d", test_golden_order[case_count][j]);
+            end
+        end
+        
+        $fclose(file);
+        $display("測試案例載入完成！");
+    end
+endtask
+```
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 系統驗證 (7/7)
+
+### 批次測試執行流程
+
+```verilog
+// 執行單個測試案例
+task run_single_test;
+    input [9:0] test_case_id;
+    begin
+        current_test_case = test_case_id;
+        exec_count = 0;
+        
+        // 設置依賴關係矩陣
+        dependency_matrix = test_dependency_matrix[test_case_id];
+        
+        // 使用文件中的輸入順序（而不是隨機生成）
+        for (i = 0; i < 7; i = i + 1) begin
+            task_sequence[i] = test_input_sequence[test_case_id][i];
+        end
+        
+        if (test_case_id < 5 || test_case_id % 100 == 0) begin
+            $display("\n===== 測試案例 %0d =====", test_case_id);
+            $display("依賴關係矩陣: %49b", test_dependency_matrix[test_case_id]);
+            
+            $write("輸入請求順序: ");
+            for (j = 0; j < 7; j = j + 1) begin
+                $write("%c ", task_sequence[j] + "a");
+            end
+            $display("");
+            
+            $write("期望執行順序: ");
+            for (j = 0; j < 7; j = j + 1) begin
+                $write("%c ", test_golden_order[test_case_id][j] + "a");
+            end
+            $display("");
+        end
+        
+        // 重置處理器並執行測試
+        rst_n = 1'b0; task_req = 1'b0; task_id = 3'd0;
+        #20; rst_n = 1'b1; #20;
+        
+        // 按指定的輸入順序請求所有任務
+        for (i = 0; i < 7; i = i + 1) begin
+            request_task(task_sequence[i]);
+            #30;
+        end
+        
+        // 等待所有任務完成
+        wait(all_done);
+        #20;
+        
+        // 檢查執行順序
+        check_execution_order();
+        
+        if (test_failed) begin
+            failed_tests = failed_tests + 1;
+            $display("❌ 測試案例 %0d 失敗", test_case_id);
+        end else begin
+            passed_tests = passed_tests + 1;
+            if (test_case_id < 5 || test_case_id % 100 == 0) begin
+                $display("✅ 測試案例 %0d 通過", test_case_id);
+            end
+        end
+    end
+endtask
+```
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 精確結果驗證機制 (1/2)
+
+### 執行順序檢查
+
+```verilog
+// 檢查執行順序是否正確
+task check_execution_order;
+    begin
+        test_failed = 1'b0;
+        
+        if (exec_count != 7) begin
+            $display("錯誤：執行的任務數量不正確 (期望:7, 實際:%0d)", exec_count);
+            test_failed = 1'b1;
+            return;
+        end
+        
+        // 比較實際執行順序與golden順序
+        for (i = 0; i < 7; i = i + 1) begin
+            if (actual_execution_order[i] !== test_golden_order[current_test_case][i]) begin
+                $display("錯誤：第%0d個任務執行順序不匹配 (期望:%c, 實際:%c)", 
+                        i, test_golden_order[current_test_case][i] + "a", actual_execution_order[i] + "a");
+                test_failed = 1'b1;
+                return;
+            end
+        end
+    end
+endtask
+```
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 精確結果驗證機制 (2/2)
+
+### 任務完成監控
+
+```verilog
+// 任務完成監控 - 記錄實際執行順序
+always @(posedge task_done) begin
+    actual_execution_order[exec_count] = current_task;
+    exec_count = exec_count + 1;
+    
+    if (ENABLE_FULL_COVERAGE) begin
+        if (current_test_case < 3) begin  // 只對前3個案例顯示詳細信息
+            `$display(">>> 時間=%0t：任務%c執行完成 (第%0d個) <<<", $`time, current_task + "a", exec_count);
+        end
+    end else begin
+        `$display(">>> 時間=%0t：任務%c執行完成 <<<", $`time, current_task + "a");
+    end
+end
+```
+
+驗證機制逐一比對實際執行順序與 Golden Answer，確保每個位置的任務都完全正確。
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 大規模測試執行與統計分析 (1/2)
+
+### 主測試流程
+
+```verilog
+initial begin
+    // 初始化
+    passed_tests = 0;
+    failed_tests = 0;
+    current_test_case = 0;
+    
+    if (ENABLE_FULL_COVERAGE) begin
+        $display("===== 開始全覆蓋依賴關係測試 =====");
+        
+        // 載入測試案例
+        load_test_cases();
+        
+        $display("\n===== 開始執行 %0d 個測試案例 =====", total_test_cases);
+        
+        // 執行所有測試案例
+        for (current_test_case = 0; current_test_case < total_test_cases; current_test_case = current_test_case + 1) begin
+            run_single_test(current_test_case);
+            
+            // 每100個案例顯示進度
+            if ((current_test_case + 1) % 100 == 0) begin
+                $display("進度: %0d/%0d 已完成 (通過:%0d, 失敗:%0d)", 
+                        current_test_case + 1, total_test_cases, passed_tests, failed_tests);
+            end
+        end
+        
+        // 顯示最終結果
+        display_final_results();
+    end
+    
+    #50;
+    $finish;
+end
+```
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## 大規模測試執行與統計分析 (2/2)
+
+### 詳細測試結果報告
+
+```verilog
+// 顯示最終測試結果
+task display_final_results;
+    real pass_rate;
+    begin
+        $display("\n============================================================");
+        $display("全覆蓋測試完成！");
+        $display("============================================================");
+        $display("總測試案例數: %0d", total_test_cases);
+        $display("通過案例數:   %0d", passed_tests);
+        $display("失敗案例數:   %0d", failed_tests);
+        
+        if (total_test_cases > 0) begin
+            pass_rate = (1.0 * passed_tests) / total_test_cases * 100.0;
+            $display("通過率:       %0.2f%%", pass_rate);
+        end
+        
+        if (failed_tests == 0) begin
+            $display("🎉 所有測試案例都通過了！系統依賴關係處理完全正確！");
+        end else begin
+            $display("⚠️  有 %0d 個測試案例失敗，請檢查系統邏輯", failed_tests);
+        end
+        $display("============================================================");
+    end
+endtask
+```
+
+最終報告提供詳細的統計信息，包括通過率計算和失敗案例分析，為系統優化提供明確的指標。
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+## nWave
+<img src="https://hackmd.io/_uploads/r1jq5nQ7gl.png" alt="圖片" style="object-fit: scale-down">
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+系統狀態機編碼：
+0 = SYS_IDLE（空閒狀態）
+1 = SYS_SCHEDULE（調度狀態）
+2 = SYS_EXECUTE（執行狀態）
+3 = SYS_COMPLETE（完成狀態）
+
+任務狀態機編碼：
+0 = TASK_NONE（未請求狀態）
+1 = TASK_WAITING（等待依賴狀態）
+2 = TASK_RUNNING（執行中狀態）
+3 = TASK_DONE（完成狀態）
+
+測試執行始於TIME 1169380，系統接收到針對任務A的第一個請求信號。由於任務A在依賴關係矩陣中無任何前置依賴，has_executable_task信號隨即觸發，促使系統狀態在下一時鐘上升沿從SYS_IDLE狀態轉移至SYS_SCHEDULE狀態，並於後續時鐘週期進入SYS_EXECUTE狀態以啟動任務A的執行程序。經過預定的兩個時鐘週期執行時間後，任務A完成並更新task_completed位向量的對應位元，同步觸發deps_satisfied_B依賴滿足信號，為任務B的後續執行移除依賴約束條件。
+
+第二個任務請求於TIME 1169660發出，目標為任務E。此階段充分驗證了系統依賴阻塞機制的準確性。儘管任務A已完成執行，任務E因仍需等待任務C的完成而無法滿足其完整的依賴條件，導致deps_satisfied_E信號維持未觸發狀態。系統依賴檢查邏輯正確識別當前無可執行任務的情況，維持has_executable_task為低電位，使系統狀態從SYS_SCHEDULE狀態直接回復至SYS_IDLE狀態，同時任務E保持TASK_WAITING狀態以等待依賴條件滿足。
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+任務B的執行請求於TIME 1169780提交，鑑於其前置依賴任務A已完成，系統立即啟動任務B的執行流程。經過三個時鐘週期的執行過程，任務B完成並觸發deps_satisfied_G信號，為任務G消除依賴限制。需注意的是，儘管任務B已完成，但由於任務E仍處於等待狀態，all_requested_done完成檢測信號並未觸發，系統維持運行狀態以處理後續任務請求。
+
+任務G的請求於TIME 1170100提出，系統通過依賴檢查確認其前置條件已滿足，隨即開始執行此需時5個時鐘週期的任務。任務G完成後，系統仍未觸發all_requested_done信號，原因在於任務E持續處於等待執行狀態。
+</div></script></section><section  data-markdown><script type="text/template"><!-- .slide: class="drop" -->
+<div class="" style="position: absolute; left: 0px; top: 0px; height: 700px; width: 960px; min-height: 700px; display: flex; flex-direction: column; align-items: center; justify-content: center" absolute="true">
+
+系統執行的關鍵轉折點出現在TIME 1170550，任務C的執行請求被提交。基於任務C在依賴矩陣中無前置約束的特性，系統立即啟動其執行程序，經過4個時鐘週期後完成。在任務C完成的時刻（TIME 1170780），系統觸發了顯著的依賴解除機制：deps_satisfied_E信號立即觸發，原因為任務E所需的全部依賴條件（任務A和任務C）均已滿足。，從SYS_COMPLETE狀態無縫轉移至SYS_SCHEDULE狀態，隨後進入SYS_EXECUTE狀態，實現任務E的即時執行，整個狀態轉換過程未產生任何時鐘週期延遲。
+
+任務E執行完畢後，all_requested_done信號被觸發，標誌著所有已提交的任務請求均已完成執行，且當前無待處理任務存在於系統佇列中。系統狀態回歸SYS_IDLE狀態，表明系統已準備就緒以接收新的任務請求。後續提交的任務F和任務D請求均能立即執行，此乃因其所需的前置依賴條件在先前任務的執行過程中已得到充分滿足。
+</div></script></section></div>
+    </div>
+
+    <script src="dist/reveal.js"></script>
+
+    <script src="plugin/markdown/markdown.js"></script>
+    <script src="plugin/highlight/highlight.js"></script>
+    <script src="plugin/zoom/zoom.js"></script>
+    <script src="plugin/notes/notes.js"></script>
+    <script src="plugin/math/math.js"></script>
+	<script src="plugin/mermaid/mermaid.js"></script>
+	<script src="plugin/chart/chart.min.js"></script>
+	<script src="plugin/chart/plugin.js"></script>
+	<script src="plugin/menu/menu.js"></script>
+	<script src="plugin/customcontrols/plugin.js"></script>
+
+    <script>
+      function extend() {
+        var target = {};
+        for (var i = 0; i < arguments.length; i++) {
+          var source = arguments[i];
+          for (var key in source) {
+            if (source.hasOwnProperty(key)) {
+              target[key] = source[key];
+            }
+          }
+        }
+        return target;
+      }
+
+	  function isLight(color) {
+		let hex = color.replace('#', '');
+
+		// convert #fff => #ffffff
+		if(hex.length == 3){
+			hex = `${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`;
+		}
+
+		const c_r = parseInt(hex.substr(0, 2), 16);
+		const c_g = parseInt(hex.substr(2, 2), 16);
+		const c_b = parseInt(hex.substr(4, 2), 16);
+		const brightness = ((c_r * 299) + (c_g * 587) + (c_b * 114)) / 1000;
+		return brightness > 155;
+	}
+
+	var bgColor = getComputedStyle(document.documentElement).getPropertyValue('--r-background-color').trim();
+	var isLight = isLight(bgColor);
+
+	if(isLight){
+		document.body.classList.add('has-light-background');
+	} else {
+		document.body.classList.add('has-dark-background');
+	}
+
+      // default options to init reveal.js
+      var defaultOptions = {
+        controls: true,
+        progress: true,
+        history: true,
+        center: true,
+        transition: 'default', // none/fade/slide/convex/concave/zoom
+        plugins: [
+          RevealMarkdown,
+          RevealHighlight,
+          RevealZoom,
+          RevealNotes,
+          RevealMath.MathJax3,
+		  RevealMermaid,
+		  RevealChart,
+		  RevealCustomControls,
+		  RevealMenu,
+        ],
+
+
+    	allottedTime: 120 * 1000,
+
+		mathjax3: {
+			mathjax: 'plugin/math/mathjax/tex-mml-chtml.js',
+		},
+		markdown: {
+		  gfm: true,
+		  mangle: true,
+		  pedantic: false,
+		  smartLists: false,
+		  smartypants: false,
+		},
+
+		mermaid: {
+			theme: isLight ? 'default' : 'dark',
+		},
+
+		customcontrols: {
+			controls: [
+			]
+		},
+		menu: {
+			loadIcons: false
+		}
+      };
+
+      // options from URL query string
+      var queryOptions = Reveal().getQueryHash() || {};
+
+      var options = extend(defaultOptions, {"width":960,"height":700,"margin":0.04,"controls":true,"progress":true,"slideNumber":true,"transition":"slide","transitionSpeed":"default"}, queryOptions);
+    </script>
+
+    <script>
+      Reveal.initialize(options);
+    </script>
+  </body>
+
+  <!-- created with Advanced Slides -->
+</html>
